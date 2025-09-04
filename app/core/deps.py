@@ -5,7 +5,7 @@ This module provides dependencies for authentication and authorization.
 """
 
 from typing import Optional, Generator
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import Depends, HTTPException, status, Request, Query
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +36,28 @@ from app.core.rbac import (
     update_transaction_with_access, delete_transaction_with_access,
     update_user_with_access, delete_user_with_access
 )
+from app.utils.pagination import PaginationParams
+
+def get_pagination_params(
+    page: int = Query(1, ge=1, description="Page number"),
+    size: int = Query(10, ge=1, le=100, description="Page size"),
+    search: Optional[str] = Query(None, description="Search term"),
+    sort_by: str = Query("id", description="Field to sort by"),
+    sort_order: str = Query("asc", regex="^(asc|desc)$", description="Sort order")
+) -> PaginationParams:
+    """
+    Get pagination parameters from request query.
+    
+    Returns:
+        PaginationParams object with extracted values
+    """
+    return PaginationParams(
+        page=page,
+        size=size,
+        search=search,
+        sort_by=sort_by,
+        sort_order=sort_order
+    )
 
 
 async def get_request_client(request: Request):
