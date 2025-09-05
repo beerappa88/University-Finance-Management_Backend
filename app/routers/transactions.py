@@ -3,13 +3,16 @@ Transaction API endpoints.
 This module provides CRUD endpoints for transactions.
 """
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from decimal import Decimal
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 from app.core.logging import logger
 from app.core.deps import (
     get_request_client,
     can_create_transaction, can_read_transaction
 )
+from app.core.deps import get_pagination_params
 from app.core.rbac import (
     get_transaction_with_access, update_transaction_with_access, delete_transaction_with_access
 )
@@ -19,8 +22,14 @@ from app.schemas.transaction import (
     Transaction,
     TransactionCreate,
     TransactionUpdate,
+    TransactionWithDetails,
 )
 from app.services.transaction import TransactionService
+from app.utils.pagination import PaginationParams, PaginatedResponse, paginate_query
+from datetime import datetime
+from app.models.transaction import Transaction as TransactionModel
+from app.models.budget import Budget
+from app.models.department import Department
 from uuid import UUID
 router = APIRouter()
 
@@ -64,7 +73,7 @@ async def create_transaction(
 
 @router.get("/{transaction_id}", response_model=Transaction)
 async def get_transaction(
-    transaction: Transaction = Depends(get_transaction_with_access)
+    transaction: TransactionModel = Depends(get_transaction_with_access)
 ) -> Transaction:
     """
     Get a transaction by ID.
@@ -80,38 +89,145 @@ async def get_transaction(
     logger.info(f"Transaction details requested for ID: {transaction.id}")
     return transaction
 
-@router.get("/", response_model=List[Transaction])
+@router.get("/", response_model=PaginatedResponse[TransactionWithDetails])
 async def get_all_transactions(
-    skip: int = 0,
-    limit: int = 100,
-    budget_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_db),
+    pagination: PaginationParams = Depends(get_pagination_params),
+    budget_id: Optional[UUID] = Query(None, description="Filter by budget ID"),
+    department_id: Optional[UUID] = Query(None, description="Filter by department ID"),
+    start_date: Optional[datetime] = Query(None, description="Filter by start date"),
+    end_date: Optional[datetime] = Query(None, description="Filter by end date"),
+    transaction_type: Optional[str] = Query(None, description="Filter by transaction type"),
     current_user = Depends(can_read_transaction)
-) -> List[Transaction]:
+) -> PaginatedResponse[TransactionWithDetails]:
     """
-    Get all transactions with optional filtering by budget.
-    
+    Get all transactions with optional filters and pagination.
     Args:
-        skip: Number of records to skip
-        limit: Maximum number of records to return
-        budget_id: Optional budget ID to filter by
         db: Database session
+        pagination: Pagination parameters
+        budget_id: Optional budget ID to filter by
+        department_id: Optional department ID to filter by
+        start_date: Optional start date to filter by
+        end_date: Optional end date to filter by
+        transaction_type: Optional transaction type to filter by
         current_user: Current authenticated user
         
-    Returns:
-        List of transactions
+        Returns:
+        Paginated list of transactions with details
     """
-    logger.info(f"Transaction list requested by: {current_user.username}")
-    
-    if budget_id:
-        transactions = await TransactionService.get_by_budget(
-            db, budget_id, skip=skip, limit=limit
+    try:
+        # Define allowed sort fields
+        sort_fields = {
+            "id": TransactionModel.id,
+            "transaction_date": TransactionModel.transaction_date,
+            "amount": TransactionModel.amount,
+            "created_at": TransactionModel.created_at,
+            "updated_at": TransactionModel.updated_at,
+            "department_name": Department.name,
+        }
+        
+        # Base query with joins and labels
+        query = (
+            select(
+                TransactionModel.id,
+                TransactionModel.budget_id,
+                TransactionModel.transaction_type,
+                TransactionModel.amount,
+                TransactionModel.description,
+                TransactionModel.reference_number,
+                TransactionModel.transaction_date,
+                TransactionModel.created_at,
+                TransactionModel.updated_at,
+                Department.name.label("department_name"),
+                Budget.fiscal_year.label("fiscal_year"),
+            )
+            .join(Budget, TransactionModel.budget_id == Budget.id)
+            .join(Department, Budget.department_id == Department.id)
         )
-    else:
-        transactions = await TransactionService.get_all(db, skip=skip, limit=limit)
-    
-    logger.info(f"Retrieved {len(transactions)} transactions")
-    return transactions
+        
+        # Apply filters
+        if budget_id:
+            query = query.where(TransactionModel.budget_id == budget_id)
+        if department_id:
+            query = query.where(Department.id == department_id)
+        if start_date:
+            query = query.where(TransactionModel.transaction_date >= start_date)
+        if end_date:
+            query = query.where(TransactionModel.transaction_date <= end_date)
+        if transaction_type:
+            query = query.where(TransactionModel.transaction_type == transaction_type)
+        if pagination.search:
+            term = f"%{pagination.search}%"
+            query = query.where(
+                TransactionModel.description.ilike(term) |
+                Department.name.ilike(term) |
+                Budget.fiscal_year.ilike(term)
+            )
+        
+        # Sorting
+        sort_col = sort_fields.get(pagination.sort_by)
+        if sort_col is not None:
+            query = query.order_by(
+                sort_col.desc() if pagination.sort_order == "desc" else sort_col.asc()
+            )
+        else:
+            query = query.order_by(TransactionModel.transaction_date.desc())
+        
+        # Count query (same joins)
+        count_query = (
+            select(func.count(TransactionModel.id))
+            .join(Budget, TransactionModel.budget_id == Budget.id)
+            .join(Department, Budget.department_id == Department.id)
+        )
+        
+        # Apply same filters to count query
+        for criterion in query._where_criteria:
+            count_query = count_query.where(criterion)
+        
+        # Use paginate_query with use_scalars=False
+        paginated_result = await paginate_query(
+            db=db,
+            query=query,
+            count_query=count_query,
+            pagination=pagination,
+            model=None,
+            use_scalars=False  # Critical: we're returning Row objects
+        )
+        
+        # Transform Row objects to dicts
+        transformed_items = []
+        for row in paginated_result.items:
+            if not hasattr(row, '_mapping'):
+                continue
+            item_dict = {
+                key: str(value) if isinstance(value, UUID)
+                else float(value) if isinstance(value, Decimal)
+                else value.isoformat() if isinstance(value, datetime)
+                else value
+                for key, value in row._mapping.items()
+            }
+            # Add computed field
+            item_dict["budget_name"] = f"{item_dict.get('department_name', 'Unknown')} - {item_dict.get('fiscal_year', 'Unknown')}"
+            transformed_items.append(item_dict)
+        
+        # Create a new PaginatedResponse with transformed items and pagination metadata
+        return PaginatedResponse[TransactionWithDetails](
+            items=transformed_items,
+            total=paginated_result.total,
+            page=paginated_result.page,
+            size=paginated_result.size,
+            pages=paginated_result.pages,
+            has_next=paginated_result.has_next,
+            has_prev=paginated_result.has_prev,
+            next_page=paginated_result.next_page,
+            prev_page=paginated_result.prev_page
+        )
+    except Exception as e:
+        logger.error(f"Error fetching transactions: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch transactions: {str(e)}"
+        )
 
 @router.put("/{transaction_id}", response_model=Transaction)
 async def update_transaction(

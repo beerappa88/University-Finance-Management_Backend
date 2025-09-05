@@ -27,6 +27,8 @@ class ReportCreate(ReportBase):
 
 
 class ReportUpdate(BaseModel):
+    """Schema for updating an existing report."""
+
     name: Optional[str] = None
     parameters: Optional[Dict[str, Any]] = None
 
@@ -46,6 +48,8 @@ class Report(ReportBase):
 
 
 class ReportFilter(BaseModel):
+    """Schema for filtering reports."""
+
     report_type: Optional[str] = None
     generated_by: Optional[UUID] = None
     start_date: Optional[datetime] = None
@@ -54,10 +58,13 @@ class ReportFilter(BaseModel):
 
 
 class ReportSummary(BaseModel):
+    """Schema for report summary data."""
+
     total_reports: int
     reports_by_type: Dict[str, int]
-    recent_reports: List[Dict[str, Any]]  # Changed from List[Report]
-    popular_reports: List[Dict[str, Any]]  # Changed from List[Rep
+    recent_reports: List[Dict[str, Any]]
+    popular_reports: List[Dict[str, Any]]
+
 
 class DashboardData(BaseModel):
     """Schema for dashboard data."""

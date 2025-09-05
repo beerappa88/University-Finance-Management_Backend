@@ -11,6 +11,7 @@ from app.core.deps import (
     can_create_department, 
     can_read_department
 )
+from app.core.deps import get_pagination_params
 from app.core.rbac import (
     get_department_with_access, update_department_with_access, delete_department_with_access
 )
@@ -21,7 +22,11 @@ from app.schemas.department import (
     DepartmentUpdate,
 )
 from app.services.department import DepartmentService
+from app.utils.pagination import PaginationParams, paginate_query, PaginatedResponse
 from uuid import UUID
+from sqlalchemy import select, func
+from app.models.department import Department as DepartmentModel
+
 router = APIRouter()
 
 @router.post("/", response_model=Department, status_code=status.HTTP_201_CREATED)
@@ -66,7 +71,7 @@ async def create_department(
 
 @router.get("/{department_id}", response_model=Department)
 async def get_department(
-    department: Department = Depends(get_department_with_access)
+    department: DepartmentModel = Depends(get_department_with_access)
 ) -> Department:
     """
     Get a department by ID.
@@ -82,37 +87,48 @@ async def get_department(
     logger.info(f"Department details requested for ID: {department.id}")
     return department
 
-@router.get("/", response_model=List[Department])
+@router.get("/", response_model=PaginatedResponse[Department])
 async def get_all_departments(
-    skip: int = 0,
-    limit: int = 100,
     db: AsyncSession = Depends(get_db),
+    pagination: PaginationParams = Depends(get_pagination_params),
     current_user = Depends(can_read_department)
-) -> List[Department]:
+):
     """
-    Get all departments with pagination.
-    
-    Args:
-        skip: Number of records to skip
-        limit: Maximum number of records to return
-        db: Database session
-        current_user: Current authenticated user
+    Get all departments with pagination, search, and sorting.
+    """
+    try:
+        # Build base query
+        query = select(DepartmentModel)
         
-    Returns:
-        List of departments
-    """
-    logger.info(f"Department list requested by: {current_user.username}")
-    
-    departments = await DepartmentService.get_all(db, skip=skip, limit=limit)
-    if not departments:
-        logger.warning("No departments found")
+        # Apply search filter if provided
+        if pagination.search:
+            search_term = f"%{pagination.search}%"
+            query = query.where(
+                DepartmentModel.name.ilike(search_term) | 
+                DepartmentModel.code.ilike(search_term)
+            )
+        
+        # Create count query for performance
+        count_query = select(func.count(DepartmentModel.id))
+        if pagination.search:
+            search_term = f"%{pagination.search}%"
+            count_query = count_query.where(
+                DepartmentModel.name.ilike(search_term) | 
+                DepartmentModel.code.ilike(search_term)
+            )
+        
+        # Execute paginated query
+        result = await paginate_query(db, query, pagination, count_query, DepartmentModel)
+        
+        logger.info(f"Retrieved {len(result.items)} departments (page {result.page} of {result.pages})")
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching departments: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No departments found",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch departments: {str(e)}"
         )
-    
-    logger.info(f"Retrieved {len(departments)} departments")
-    return departments
 
 @router.put("/{department_id}", response_model=Department)
 async def update_department(

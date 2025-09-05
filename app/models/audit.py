@@ -24,7 +24,7 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     action = Column(String(50), nullable=False)  # CREATE, UPDATE, etc.
     resource_type = Column(String(50), nullable=False)  # USER, BUDGET, etc.
     resource_id = Column(String(50), nullable=True)  # ID of the resource
@@ -34,7 +34,7 @@ class AuditLog(Base):
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationship
-    user = relationship("User", back_populates="audit_logs")
+    user = relationship("User", back_populates="audit_logs", foreign_keys=[user_id])
 
     def __repr__(self):
         """String representation of the AuditLog model."""

@@ -28,7 +28,7 @@ class TransactionBase(BaseModel):
 
 class TransactionCreate(TransactionBase):
     """Schema for creating a new transaction."""
-    
+
     pass
 
 
@@ -50,5 +50,17 @@ class Transaction(TransactionBase):
     
     class Config:
         """Configuration for the Transaction schema."""
-        
+
         orm_mode = True
+
+class TransactionWithDetails(Transaction):
+    budget_name: str
+    department_name: str
+
+    class Config:
+        orm_mode = True
+        json_encoders = {
+            UUID: str,
+            datetime: lambda v: v.isoformat(),
+            Decimal: float,  # or str(v) for precision
+        }

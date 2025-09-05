@@ -892,3 +892,31 @@ class ReportService:
             await set_cache(cache_key, report_data, expire=timedelta(minutes=30))
         
         return report_data
+    
+    @staticmethod
+    async def delete_report(
+        db: AsyncSession,
+        report_id: UUID
+    ) -> bool:
+        """
+        Delete a report by ID.
+        
+        Args:
+            db: Database session
+            report_id: Report ID to delete
+            
+        Returns:
+            True if report was deleted, False if not found
+        """
+        logger.debug(f"Deleting report: {report_id}")
+        
+        result = await db.execute(select(Report).where(Report.id == report_id))
+        report = result.scalars().first()
+        
+        if not report:
+            return False
+        
+        await db.delete(report)
+        await db.commit()
+        
+        return True

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
 from app.core.logging import logger
-from app.models.transaction import Transaction, TransactionType
+from app.models.transaction import Transaction as TransactionModel, TransactionType
 from app.schemas.transaction import TransactionCreate, TransactionUpdate
 from app.db.audit import log_action_async
 from .budget import BudgetService
@@ -29,7 +29,7 @@ class TransactionService:
         user_id: Optional[UUID] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
-    ) -> Transaction:
+    ) -> TransactionModel:
         """
         Create a new transaction.
 
@@ -64,7 +64,7 @@ class TransactionService:
                 raise ValueError("Insufficient funds in budget")
 
         # Create transaction
-        transaction = Transaction(**transaction_in.model_dump())  # Use model_dump() for Pydantic v2
+        transaction = TransactionModel(**transaction_in.model_dump())  # Use model_dump() for Pydantic v2
         db.add(transaction)
 
         # Commit and refresh to get DB-generated fields (like ID)
@@ -124,7 +124,7 @@ class TransactionService:
     async def get_by_id(
         db: AsyncSession, 
         transaction_id: UUID
-    ) -> Optional[Transaction]:
+    ) -> Optional[TransactionModel]:
         """
         Get a transaction by ID.
         
@@ -138,7 +138,7 @@ class TransactionService:
         logger.debug(f"Getting transaction by ID: {transaction_id}")
         
         result = await db.execute(
-            select(Transaction).where(Transaction.id == transaction_id)
+            select(TransactionModel).where(TransactionModel.id == transaction_id)
         )
         return result.scalars().first()
     
@@ -146,7 +146,7 @@ class TransactionService:
     async def get_by_reference_number(
         db: AsyncSession, 
         reference_number: str
-    ) -> Optional[Transaction]:
+    ) -> Optional[TransactionModel]:
         """
         Get a transaction by reference number.
         
@@ -160,7 +160,7 @@ class TransactionService:
         logger.debug(f"Getting transaction by reference number: {reference_number}")
         
         result = await db.execute(
-            select(Transaction).where(Transaction.reference_number == reference_number)
+            select(TransactionModel).where(TransactionModel.reference_number == reference_number)
         )
         return result.scalars().first()
     
@@ -169,7 +169,7 @@ class TransactionService:
         db: AsyncSession, 
         skip: int = 0, 
         limit: int = 100
-    ) -> List[Transaction]:
+    ) -> List[TransactionModel]:
         """
         Get all transactions with pagination.
         
@@ -184,7 +184,7 @@ class TransactionService:
         logger.debug(f"Getting all transactions, skip={skip}, limit={limit}")
         
         result = await db.execute(
-            select(Transaction).offset(skip).limit(limit)
+            select(TransactionModel).offset(skip).limit(limit)
         )
         return result.scalars().all()
     
@@ -194,7 +194,7 @@ class TransactionService:
         budget_id: UUID,
         skip: int = 0, 
         limit: int = 100
-    ) -> List[Transaction]:
+    ) -> List[TransactionModel]:
         """
         Get all transactions for a specific budget.
         
@@ -213,8 +213,8 @@ class TransactionService:
         )
         
         result = await db.execute(
-            select(Transaction)
-            .where(Transaction.budget_id == budget_id)
+            select(TransactionModel)
+            .where(TransactionModel.budget_id == budget_id)
             .offset(skip)
             .limit(limit)
         )
@@ -228,7 +228,7 @@ class TransactionService:
         user_id: Optional[UUID] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
-    ) -> Optional[Transaction]:
+    ) -> Optional[TransactionModel]:
         """
         Update a transaction.
         
@@ -266,7 +266,7 @@ class TransactionService:
         old_amount = transaction.amount
         
         # Update the transaction
-        update_data = transaction_in.dict(exclude_unset=True)
+        update_data = transaction_in.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(transaction, field, value)
         

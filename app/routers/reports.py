@@ -4,11 +4,12 @@ This module provides endpoints for generating and managing financial reports.
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from app.core.logging import logger
 from app.core.deps import require_role
+from app.core.deps import get_pagination_params
 from app.db.session import get_db
 from app.models.user import User
 from app.models.report import Report as ReportModel
@@ -18,6 +19,7 @@ from app.schemas.report import (
 )
 from app.services.report import ReportService
 from app.core.rbac import can_read_report, can_create_report, can_delete_report
+from app.utils.pagination import PaginationParams, PaginatedResponse, paginate_query
 from uuid import UUID
 import csv
 import io
@@ -63,7 +65,7 @@ async def generate_budget_vs_actual_report(
             report_type="BUDGET_VS_ACTUAL",
             parameters={
                 "fiscal_year": fiscal_year,
-                "department_id": department_id
+                "department_id": str(department_id) if department_id else None
             }
         )
         
@@ -113,7 +115,7 @@ async def generate_department_spending_report(
             parameters={
                 "start_date": start_date.isoformat(),
                 "end_date": end_date.isoformat(),
-                "department_id": department_id
+                "department_id": str(department_id) if department_id else None
             }
         )
         
@@ -160,7 +162,7 @@ async def generate_monthly_spending_trend(
             report_type="MONTHLY_SPENDING_TREND",
             parameters={
                 "fiscal_year": fiscal_year,
-                "department_id": department_id
+                "department_id": str(department_id) if department_id else None
             }
         )
         
@@ -209,7 +211,7 @@ async def generate_expense_categories_report(
             parameters={
                 "start_date": start_date.isoformat(),
                 "end_date": end_date.isoformat(),
-                "department_id": department_id
+                "department_id": str(department_id) if department_id else None
             }
         )
         
@@ -258,7 +260,7 @@ async def generate_revenue_vs_expenses_report(
             parameters={
                 "start_date": start_date.isoformat(),
                 "end_date": end_date.isoformat(),
-                "department_id": department_id
+                "department_id": str(department_id) if department_id else None
             }
         )
         
@@ -267,35 +269,71 @@ async def generate_revenue_vs_expenses_report(
     return report_data
 
 # Generic routes should come AFTER specific routes
-@router.get("/", response_model=List[Report])
+@router.get("/", response_model=PaginatedResponse[Report])
 async def get_saved_reports(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=200),
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    pagination: PaginationParams = Depends(get_pagination_params),
     report_type: Optional[str] = Query(None),
     generated_by: Optional[UUID] = Query(None),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
     search: Optional[str] = Query(None),
-    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(can_read_report),
-) -> List[Report]:
+) -> PaginatedResponse[Report]:
     """
-    Get all saved reports with filtering capabilities.
+    Get all saved reports with filtering capabilities and pagination.
     """
     logger.debug("Getting saved reports with filters")
     
-    filters = ReportFilter(
-        report_type=report_type,
-        generated_by=generated_by,
-        start_date=start_date,
-        end_date=end_date,
-        search=search
-    )
+    # Base query
+    stmt = select(ReportModel)
     
-    reports = await ReportService.get_reports_with_filter(
-        db, filters, skip=skip, limit=limit
-    )
-    return reports
+    # Apply filters
+    if report_type:
+        stmt = stmt.where(ReportModel.report_type == report_type)
+    
+    if generated_by:
+        stmt = stmt.where(ReportModel.generated_by == generated_by)
+    
+    if start_date:
+        stmt = stmt.where(ReportModel.created_at >= start_date)
+    
+    if end_date:
+        stmt = stmt.where(ReportModel.created_at <= end_date)
+    
+    if search:
+        search_term = f"%{search}%"
+        stmt = stmt.where(
+            ReportModel.name.ilike(search_term)
+        )
+    
+    # Create count query for performance
+    count_query = select(func.count(ReportModel.id))
+    if report_type:
+        count_query = count_query.where(ReportModel.report_type == report_type)
+    
+    if generated_by:
+        count_query = count_query.where(ReportModel.generated_by == generated_by)
+    
+    if start_date:
+        count_query = count_query.where(ReportModel.created_at >= start_date)
+    
+    if end_date:
+        count_query = count_query.where(ReportModel.created_at <= end_date)
+    
+    if search:
+        search_term = f"%{search}%"
+        count_query = count_query.where(
+            ReportModel.name.ilike(search_term)
+        )
+    
+    # Execute paginated query
+    result = await paginate_query(db, stmt, pagination, count_query, ReportModel)
+    
+    logger.info(f"Retrieved {len(result.items)} reports (page {result.page} of {result.pages})")
+    
+    return result
 
 @router.get("/summary", response_model=ReportSummary)
 async def get_reports_summary(
@@ -468,6 +506,33 @@ async def export_report_endpoint(
                     'headers': headers,
                     'rows': rows
                 }
+        else:
+            # Try to extract data from other possible structures
+            # This is a fallback for reports that don't have tableData or chartData
+            results = report.results
+            if isinstance(results, dict):
+                # Look for any data that could be converted to a table
+                for key, value in results.items():
+                    if isinstance(value, list) and len(value) > 0:
+                        # Assume this is a list of rows
+                        if isinstance(value[0], dict):
+                            # If rows are dictionaries, use keys as headers
+                            headers = list(value[0].keys())
+                            rows = [[row.get(header, '') for header in headers] for row in value]
+                            table_data = {
+                                'headers': headers,
+                                'rows': rows
+                            }
+                            break
+                        elif isinstance(value[0], list):
+                            # If rows are lists, assume first row is headers
+                            headers = value[0]
+                            rows = value[1:]
+                            table_data = {
+                                'headers': headers,
+                                'rows': rows
+                            }
+                            break
         
         if not table_data:
             raise HTTPException(
@@ -504,7 +569,12 @@ async def export_report_endpoint(
                 'Content-Disposition': f'attachment; filename="{report_type}_report_{report_id}.csv"'
             }
         )
+    except HTTPException:
+        # Re-raise HTTP exceptions as they are
+        raise
     except Exception as e:
+        # Log the full exception for debugging
+        logger.error(f"Error exporting report {report_id}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to export report: {str(e)}"

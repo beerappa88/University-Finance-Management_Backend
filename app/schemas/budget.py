@@ -48,3 +48,9 @@ class Budget(BudgetBase):
         """Configuration for the Budget schema."""
         
         orm_mode = True
+
+
+class BudgetWithDetails(Budget):
+    """Schema for budget response data with additional details."""
+    
+    department_name: str

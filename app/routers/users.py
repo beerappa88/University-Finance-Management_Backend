@@ -3,12 +3,13 @@ User management endpoints.
 This module provides endpoints for user management operations.
 """
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func, or_
 from app.core.deps import (
     can_read_user,
 )
+from app.core.deps import get_pagination_params
 from app.core.rbac import (
     update_user_with_access, delete_user_with_access
 )
@@ -18,42 +19,89 @@ from app.schemas.user import User, UserUpdate
 from app.models.user import User as UserModel
 from app.services.user import UserService
 from app.core.logging import logger
+from app.utils.pagination import PaginationParams, PaginatedResponse, paginate_query
 from uuid import UUID
+
 router = APIRouter()
 
-@router.get("/", response_model=List[User])
+@router.get("/", response_model=PaginatedResponse[User])
 async def get_users(
-    skip: int = 0,
-    limit: int = 100,
+    request: Request,
     db: AsyncSession = Depends(get_db),
+    pagination: PaginationParams = Depends(get_pagination_params),
+    search: Optional[str] = Query(None, description="Search by username or email"),
+    role: Optional[str] = Query(None, description="Filter by role"),
+    is_active: Optional[bool] = Query(None, description="Filter by active status"),
     current_user: UserModel = Depends(can_read_user),
-) -> List[UserModel]:
+) -> PaginatedResponse[User]:
     """
-    Get all users with pagination.
+    Get all users with pagination, search, and filtering.
     
     Args:
-        skip: Number of records to skip
-        limit: Maximum number of records to return
+        request: Request object
         db: Database session
+        pagination: Pagination parameters
+        search: Search term for username or email
+        role: Filter by role
+        is_active: Filter by active status
         current_user: Current authenticated user
         
     Returns:
-        List of users
+        Paginated list of users
     """
     logger.info(f"User list requested by: {current_user.username}")
     
-    result = await db.execute(select(UserModel).offset(skip).limit(limit))
-    users = result.scalars().all()
+    # Base query
+    stmt = select(UserModel)
     
-    logger.info(f"Retrieved {len(users)} users")
-    return users
+    # Apply filters
+    if search:
+        search_term = f"%{search}%"
+        stmt = stmt.where(
+            or_(
+                UserModel.username.ilike(search_term),
+                UserModel.email.ilike(search_term),
+                UserModel.full_name.ilike(search_term)
+            )
+        )
+    
+    if role:
+        stmt = stmt.where(UserModel.role == role)
+    
+    if is_active is not None:
+        stmt = stmt.where(UserModel.is_active == is_active)
+    
+    # Create count query for performance
+    count_query = select(func.count(UserModel.id))
+    if search:
+        search_term = f"%{search}%"
+        count_query = count_query.where(
+            or_(
+                UserModel.username.ilike(search_term),
+                UserModel.email.ilike(search_term),
+                UserModel.full_name.ilike(search_term)
+            )
+        )
+    
+    if role:
+        count_query = count_query.where(UserModel.role == role)
+    
+    if is_active is not None:
+        count_query = count_query.where(UserModel.is_active == is_active)
+    
+    # Execute paginated query
+    result = await paginate_query(db, stmt, pagination, count_query, UserModel)
+    
+    logger.info(f"Retrieved {len(result.items)} users (page {result.page} of {result.pages})")
+    
+    return result
 
 @router.get("/{user_id}", response_model=User)
 async def get_user(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(can_read_user),
-) -> UserModel:
+) -> User:
     """
     Get a user by ID.
     
@@ -86,13 +134,14 @@ async def update_user(
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(update_user_with_access),
-) -> UserModel:
+) -> User:
     """
     Update a user.
     
     Args:
         user_id: User ID
         user_in: User update data
+        request: Request object
         db: Database session
         current_user: Current authenticated user
         
@@ -131,6 +180,7 @@ async def delete_user(
     
     Args:
         user_id: User ID
+        request: Request object
         db: Database session
         current_user: Current authenticated user
         

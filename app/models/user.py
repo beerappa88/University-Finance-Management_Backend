@@ -68,6 +68,8 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan"
     )
+
+    export_history = relationship("ExportHistory", back_populates="user")
     
     # Department relationship - explicitly specify foreign_keys
     department = relationship(

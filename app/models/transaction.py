@@ -16,6 +16,7 @@ from app.models.base import Base
 
 class TransactionType(str, PyEnum):
     """Enumeration of transaction types."""
+
     EXPENSE = "expense"
     REFUND = "refund"
     TRANSFER_IN = "transfer_in"

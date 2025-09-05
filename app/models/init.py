@@ -14,6 +14,7 @@ from app.models.report import Report
 from app.models.audit import AuditLog
 from app.models.notification import NotificationPreference
 from app.models.session import UserSession
+from app.models.export_history import ExportHistory
 
 
 
@@ -27,5 +28,6 @@ __all__ = [
     "Report",
     "AuditLog",
     "NotificationPreference",
-    "UserSession"
+    "UserSession",
+    "ExportHistory"
 ]

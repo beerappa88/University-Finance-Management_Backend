@@ -1,4 +1,3 @@
-
 """
 Pydantic schemas for users.
 
@@ -59,7 +58,6 @@ class UserUpdate(BaseModel):
                 raise ValueError(f"Role must be one of {allowed_roles}")
         return v
 
-
 class User(UserBase):
     """Schema for user response data."""
     
@@ -74,7 +72,6 @@ class User(UserBase):
         
         orm_mode = True
         
-
 class UserInDB(User):
     """Schema for user data with password hash (for internal use)."""
     
@@ -111,7 +108,6 @@ class ChangePassword(BaseModel):
     
     current_password: str
     new_password: str
-
 
 class UserWithSensitiveInfo(User):
     """Schema for user response with sensitive information (admin only)."""

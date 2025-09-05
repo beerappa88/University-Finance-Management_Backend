@@ -1,72 +1,95 @@
 """
 Session management endpoints.
-
 This module provides endpoints for managing user sessions and login activity.
 """
-
 from typing import Any, List
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from app.core.security import create_access_token
 from app.db.session import get_db
 from app.core.auth import get_current_active_user   
 from app.models.user import User as UserModel
 from app.models.session import UserSession
 from app.schemas.session import Session, LoginActivity
+from app.utils.pagination import PaginationParams, PaginatedResponse, paginate_query
+from app.core.deps import get_pagination_params
 from uuid import UUID
+from app.core.logging import logger
 
 router = APIRouter()
 
-@router.get("/login-activity", response_model=List[LoginActivity])
+@router.get("/login-activity", response_model=PaginatedResponse[LoginActivity])
 async def get_login_activity(
-    request: Request,  # Add request parameter
+    request: Request,
     db: AsyncSession = Depends(get_db),
+    pagination: PaginationParams = Depends(get_pagination_params),
     current_user: UserModel = Depends(get_current_active_user)
-) -> Any:
+) -> PaginatedResponse[LoginActivity]:
     """
-    Get user's login activity history.
+    Get user's login activity history with pagination.
     
     Args:
         request: The request object
         db: Database session
+        pagination: Pagination parameters
         current_user: Current authenticated user
         
     Returns:
-        List of login activity records
+        Paginated list of login activity records
     """
-    result = await db.execute(
-        select(UserSession).where(
-            UserSession.user_id == current_user.id
-        ).order_by(UserSession.created_at.desc())
+    # Base query filtered by current user
+    stmt = select(UserSession).where(
+        UserSession.user_id == current_user.id
+    ).order_by(UserSession.created_at.desc())
+    
+    # Create count query for performance
+    count_query = select(func.count(UserSession.id)).where(
+        UserSession.user_id == current_user.id
     )
-    sessions = result.scalars().all()
+    
+    # Execute paginated query
+    result = await paginate_query(db, stmt, pagination, count_query, UserSession)
     
     # Get current session token
     current_token = None
-    auth_header = request.headers.get("Authorization")  # Use request instance instead of Request class
+    auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         current_token = auth_header.split(" ")[1]
     
-    activity = []
-    for session in sessions:
-        activity.append({
-            "id": session.id,
-            "username": current_user.username,
-            "ip_address": session.ip_address,
-            "user_agent": session.user_agent,
-            "login_time": session.created_at,
-            "last_activity": session.last_activity,
-            "is_current": session.session_token == current_token
-        })
+    # Transform items to response format
+    transformed_items = []
+    for item in result.items:
+        transformed_items.append(LoginActivity(
+            id=item.id,
+            username=current_user.username,
+            ip_address=item.ip_address,
+            user_agent=item.user_agent,
+            login_time=item.created_at,
+            last_activity=item.last_activity,
+            is_current=item.session_token == current_token
+        ))
     
-    return activity
+    # Create a new PaginatedResponse with the transformed items
+    transformed_result = PaginatedResponse(
+        items=transformed_items,
+        total=result.total,
+        page=result.page,
+        size=result.size,
+        pages=result.pages,
+        has_next=result.has_next,
+        has_prev=result.has_prev
+    )
+    
+    logger.info(f"Retrieved {len(transformed_items)} login activity records (page {transformed_result.page} of {transformed_result.pages})")
+    
+    return transformed_result
 
 @router.delete("/sessions/{session_id}")
 async def revoke_session(
     session_id: UUID,
-    request: Request,  # Add request parameter
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_active_user)
 ) -> dict:
@@ -98,7 +121,7 @@ async def revoke_session(
     
     # Don't allow revoking current session
     current_token = None
-    auth_header = request.headers.get("Authorization")  # Use request instance instead of Request class
+    auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         current_token = auth_header.split(" ")[1]
     
@@ -115,7 +138,7 @@ async def revoke_session(
 
 @router.delete("/sessions")
 async def revoke_all_sessions(
-    request: Request,  # Add request parameter
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_active_user)
 ) -> dict:
@@ -132,7 +155,7 @@ async def revoke_all_sessions(
     """
     # Get current session token
     current_token = None
-    auth_header = request.headers.get("Authorization")  # Use request instance instead of Request class
+    auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         current_token = auth_header.split(" ")[1]
     
@@ -152,7 +175,7 @@ async def create_user_session(
     db: AsyncSession, 
     user: UserModel, 
     token: str, 
-    request: Request  # Add request parameter
+    request: Request
 ) -> UserSession:
     """
     Create a new user session.
