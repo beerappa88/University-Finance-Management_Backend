@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: my-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    command: redis-server --requirepass $REDIS_PASSWORD
+    volumes:
+      - redis_data:/data
+volumes:
+  redis_data:
