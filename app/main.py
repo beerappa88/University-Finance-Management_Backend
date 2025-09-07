@@ -48,11 +48,7 @@ app.add_middleware(AuditMiddleware)
 # app.add_middleware(RateLimitMiddleware, rate_limits=ROLE_RATE_LIMITS)
 
 # Add CORS middleware - Updated to be more restrictive
-origins = [
-    "http://localhost:3000", 
-    "http://127.0.0.1:3000",
-    # Add more origins as needed for production
-]
+origins = settings.frontend_urls
 
 app.add_middleware(
     CORSMiddleware,

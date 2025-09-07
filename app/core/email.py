@@ -38,7 +38,7 @@ class EmailService:
                 <h2>Password Reset Request</h2>
                 <p>You have requested to reset your password for the University Finance System.</p>
                 <p>Please click the link below to reset your password:</p>
-                <p><a href="{settings.FRONTEND_URL}/reset-password?token={reset_token}">Reset Password</a></p>
+                <p><a href="{settings.FRONTEND_URLS[1]}/reset-password?token={reset_token}">Reset Password</a></p>
                 <p>If you did not request this password reset, please ignore this email.</p>
                 <p>This link will expire in 1 hour.</p>
                 <p>Thank you,<br>University Finance System Team</p>

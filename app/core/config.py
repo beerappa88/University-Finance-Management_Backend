@@ -3,10 +3,12 @@
 Configuration module for the application.
 Handles environment-specific settings using Pydantic v2 and pydantic-settings.
 """
-from typing import Optional
+from typing import Optional, List, Annotated
+from pydantic import BeforeValidator, AfterValidator
 from enum import Enum
 from pydantic import Field, field_validator, BaseModel, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Environment(str, Enum):
     DEVELOPMENT = "development"
@@ -128,7 +130,11 @@ class Settings(BaseSettings):
     smtp_from_email: str = "noreply@university.edu"
     
     # Frontend
-    frontend_url: str = "http://localhost:3000"
+    frontend_urls_raw: str = Field(
+        default="http://localhost:3000",
+        alias="FRONTEND_URLS",
+        exclude=True,
+    )
     password_reset_token_expire_minutes: int = 60
     
     # Feature flags
@@ -144,6 +150,18 @@ class Settings(BaseSettings):
         if v and env == Environment.PRODUCTION:
             raise ValueError("Debug mode should not be enabled in production")
         return v
+    
+    @property
+    def frontend_urls(self) -> list[str]:
+        """Comma-separated frontend URLs from .env, parsed into a list."""
+        urls = [url.strip() for url in self.frontend_urls_raw.split(",") if url.strip()]
+        # Optional: Validate URLs
+        from urllib.parse import urlparse
+        for url in urls:
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                raise ValueError(f"Invalid URL in frontend_urls: {url}")
+        return urls
     
     @field_validator("smtp_password")
     @classmethod
