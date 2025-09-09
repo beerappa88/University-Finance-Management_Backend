@@ -1,77 +1,100 @@
+## University Finance API
+
+A scalable, secure, and maintainable API for managing university financial operations, built with FastAPI, async SQLAlchemy, and PostgreSQL.
+
+---
 
 ## Architectural Choices Explained
 
 ### Project Structure
 The project follows a clear separation of concerns with dedicated directories for different components:
-- `core/`: Contains configuration, security, and logging utilities that are fundamental to the application.
-- `models/`: Contains SQLAlchemy models that define the database schema.
-- `schemas/`: Contains Pydantic schemas for request/response validation and serialization.
-- `services/`: Contains the business logic layer, abstracting database operations from API endpoints.
-- `routers/`: Contains API endpoints that handle HTTP requests and responses.
-- `utils/`: Contains helper functions that can be reused across the application.
+- `core/`: Configuration, security, and logging utilities.
+- `models/`: SQLAlchemy models for database schema.
+- `schemas/`: Pydantic schemas for request/response validation.
+- `services/`: Business logic layer, abstracting database operations.
+- `routers/`: API endpoints for HTTP requests and responses.
+- `utils/`: Helper functions for reuse across the application.
 
-This structure promotes maintainability and scalability by clearly separating responsibilities.
+This structure promotes maintainability and scalability.
 
 ### Dependency Management with Poetry
-Poetry was chosen for dependency management because it provides:
-- A single file for managing both dependencies and dev dependencies
-- Reliable dependency resolution
-- Virtual environment management
+Poetry is used for dependency management:
+- Single file for dependencies and dev dependencies
+- Reliable dependency resolution and virtual environment management
 - Lock files for reproducible builds
 
 ### Async SQLAlchemy with PostgreSQL
-Using async SQLAlchemy with asyncpg driver provides:
-- Better performance for I/O-bound operations
-- Non-blocking database operations
+- Non-blocking database operations using asyncpg
 - Integration with FastAPI's async capabilities
-- Support for modern Python async/await syntax
+- Modern Python async/await syntax
 
 ### Environment-based Configuration
-The application uses different configurations for development, production, and testing environments:
-- Allows for environment-specific settings without code changes
-- Supports different database URLs, logging levels, and security settings
-- Uses Pydantic for configuration validation and type checking
-- Loads configuration from .env files for easy deployment
+- Supports development, production, and testing environments
+- Loads configuration from `.env` files
+- Uses Pydantic for validation and type checking
 
 ### Service Layer
-The service layer abstracts business logic from the API endpoints:
-- Promotes code reuse by centralizing business logic
-- Makes the application easier to test by isolating business rules
-- Provides a clear separation between data access and API handling
-- Handles complex operations like budget updates when transactions are created/modified
+- Centralizes business logic for code reuse and easier testing
+- Separates data access from API handling
 
 ### Comprehensive Logging
-The application uses loguru for advanced logging:
-- Provides different configurations for development and production
-- Supports structured logging with contextual information
-- Allows for easy filtering and analysis of logs
-- Integrates well with async applications
+- Uses loguru for structured, contextual logging
+- Configurable for development and production
 
 ### Alembic for Migrations
-Alembic provides a robust way to manage database schema changes:
-- Supports both manual and automatic migration generation
-- Provides version control for database schema
-- Allows for easy rollback of changes
-- Integrates well with SQLAlchemy models
+- Manages database schema changes with version control
+- Supports rollback and integrates with SQLAlchemy models
 
 ### Security Considerations
-The application includes several security features:
-- Password hashing using bcrypt
-- JWT token authentication infrastructure
-- Input validation using Pydantic schemas
-- CORS middleware configuration
-- Protection against common web vulnerabilities
+- Password hashing with bcrypt
+- JWT authentication and role-based authorization
+- Input validation with Pydantic
+- CORS middleware and protection against common web vulnerabilities
 
 ### API Design
-The API follows RESTful principles:
-- Clear resource naming (departments, budgets, transactions)
-- Proper HTTP methods (GET, POST, PUT, DELETE)
-- Appropriate HTTP status codes
-- Consistent response formats
-- Comprehensive API documentation with FastAPI's automatic OpenAPI generation
+- RESTful principles: clear resource naming, proper HTTP methods, status codes, and consistent response formats
+- Automatic OpenAPI documentation via FastAPI
 
-This architecture provides a solid foundation for a scalable, secure, and maintainable university finance management system. The clear separation of concerns makes it easy to extend and maintain, while the use of modern Python async features ensures good performance.
+---
 
+## Getting Started
+
+### Prerequisites
+- Python 3.9–3.12
+- PostgreSQL database
+- Redis server (for caching and session management)
+- Poetry (for dependency management)
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/your-org/university-finance-api.git
+cd university-finance-api
+
+# Install dependencies
+poetry install
+
+# Copy environment variables template and configure
+cp .env.example .env
+# Edit .env with your database, Redis, and SMTP credentials
+
+# Run database migrations
+poetry run alembic upgrade head
+
+# Start the application
+poetry run uvicorn app.main:app --reload
+```
+
+### Docker Setup
+
+A `docker-compose.yml` is provided for running Redis locally:
+
+```bash
+docker-compose up -d redis
+```
+
+---
 
 ## Authentication and Authorization
 
@@ -89,7 +112,9 @@ The API uses JWT (JSON Web Tokens) for authentication and role-based authorizati
 2. Obtain a JWT token with `POST /auth/token`
 3. Include the token in the Authorization header for protected endpoints:
 
-
+   ```
+   Authorization: Bearer <your_token>
+   ```
 
 ### Protected Endpoints
 
@@ -114,9 +139,11 @@ All endpoints except health checks and user registration require authentication.
   - `GET /transactions/`
   - `GET /transactions/{id}`
 
+---
+
 ## Testing
 
-The application includes comprehensive tests for all components.
+Comprehensive tests are included for all components.
 
 ### Running Tests
 
@@ -132,5 +159,28 @@ poetry run pytest tests/test_auth.py
 
 # Run tests with verbose output
 poetry run pytest -v
+```
 
+---
 
+## API Documentation
+
+Interactive API docs are available at:
+
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+
+---
+
+## Contributing
+
+1. Fork the repository and create your branch.
+2. Make your changes and add tests.
+3. Run `poetry run pytest` to ensure all tests pass.
+4. Submit a pull request with a clear description.
+
+---
+
+## License
+
+This project is licensed under the MIT License.
