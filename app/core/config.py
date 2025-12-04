@@ -23,7 +23,7 @@ class LoggingSettings(BaseModel):
     file_path: str = "logs/app.log"
 
 class APISettings(BaseModel):
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8000
     prefix: str = "/api"
     version: str = "1.0.0"
@@ -86,7 +86,7 @@ class Settings(BaseSettings):
     api_title: str = "University Finance Management API"
     api_description: str = "A scalable, secure, and maintainable API for university finance management"
     api_version: str = "1.0.0"
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8000
     
     # Database
