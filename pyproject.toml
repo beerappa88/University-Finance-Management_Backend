@@ -9,6 +9,7 @@ description = ""
 authors = [
     {name = "beerappa88",email = "beerappametre01@gmail.com"}
 ]
+packages = [{ include = "app" }]
 readme = "README.md"
 requires-python = ">=3.9, <3.13"
 dependencies = [
