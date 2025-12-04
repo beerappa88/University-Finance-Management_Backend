@@ -39,7 +39,7 @@ class Session(SessionBase):
     class Config:
         """Configuration for the Session schema."""
         
-        orm_mode = True
+        from_attribute = True
 
 
 class LoginActivity(BaseModel):

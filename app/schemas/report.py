@@ -44,7 +44,7 @@ class Report(ReportBase):
     class Config:
         """Configuration for the Report schema."""
         
-        orm_mode = True
+        from_attribute = True
 
 
 class ReportFilter(BaseModel):

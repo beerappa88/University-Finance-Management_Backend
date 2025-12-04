@@ -51,14 +51,14 @@ class Transaction(TransactionBase):
     class Config:
         """Configuration for the Transaction schema."""
 
-        orm_mode = True
+        from_attribute = True
 
 class TransactionWithDetails(Transaction):
     budget_name: str
     department_name: str
 
     class Config:
-        orm_mode = True
+        from_attribute = True
         json_encoders = {
             UUID: str,
             datetime: lambda v: v.isoformat(),

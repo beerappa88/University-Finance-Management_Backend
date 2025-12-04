@@ -70,7 +70,7 @@ class User(UserBase):
     class Config:
         """Configuration for the User schema."""
         
-        orm_mode = True
+        from_attribute = True
         
 class UserInDB(User):
     """Schema for user data with password hash (for internal use)."""

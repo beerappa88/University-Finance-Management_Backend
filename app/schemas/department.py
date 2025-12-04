@@ -44,4 +44,4 @@ class Department(DepartmentBase):
     class Config:
         """Configuration for the Department schema."""
         
-        orm_mode = True
+        from_attribute = True

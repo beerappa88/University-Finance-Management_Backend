@@ -47,7 +47,7 @@ class Budget(BudgetBase):
     class Config:
         """Configuration for the Budget schema."""
         
-        orm_mode = True
+        from_attribute = True
 
 
 class BudgetWithDetails(Budget):
